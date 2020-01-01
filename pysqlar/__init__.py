@@ -5,31 +5,39 @@ import sys
 import zlib
 
 from datetime import datetime
+from enum import Enum, auto
 from pathlib import Path
+
+
+class Compression(Enum):
+    SQLAR_STORED = auto()
+    SQLAR_DEFLATED = auto()
+
+
+SQLAR_STORED = Compression.SQLAR_STORED
+SQLAR_DEFLATED = Compression.SQLAR_DEFLATED
 
 
 def _get_deflated_decompressor():
     return zlib.decompressobj(wbits=-zlib.MAX_WBITS)
 
 
-def _get_deflated_compressor(self, level=-1):
+def _get_deflated_compressor(level=-1):
     return zlib.compressobj(level=level, method=zlib.DEFLATED, wbits=-zlib.MAX_WBITS)
 
 
-def _compress_data(data, level=None):
-    if level:
-        compressor = _get_deflated_compressor(level)
-        return compressor.compress(data) + compressor.flush()
-    else:
-        return data
+def compress_data(data, level=None):
+    level = level if level else -1
+
+    compressed_data = zlib.compress(data, level=level)
+    return compressed_data if len(compressed_data) < len(data) else data
 
 
-def _decompress_data(data, size):
+def decompress_data(data, size):
     if size == len(data):
         return data
     else:
-        decompressor = _get_deflated_decompressor()
-        return decompressor.decompress(data)
+        return zlib.decompress(data)
 
 def _decompress_row(path, row):
     name, mode, mtime, size, data = row
@@ -37,7 +45,7 @@ def _decompress_row(path, row):
     complete_path.parent.mkdir(parents=True, exist_ok=True)
 
     with complete_path.open("wb") as f:
-        f.write(_decompress_data(data, size))
+        f.write(decompress_data(data, size))
     
     complete_path.chmod(mode)
     info = complete_path.stat()
@@ -45,9 +53,10 @@ def _decompress_row(path, row):
 
 
 class SQLiteArchive():
-    def __init__(self, filename, create=False, compress_level=None):
+    def __init__(self, filename, create=False, compression=SQLAR_STORED, compress_level=None):
         self.filename = filename
         self._conn = self._init_archive() if create else None
+        self._compression = compression
         self._compress_level = compress_level
     
     def _ensure_conn(func):
@@ -135,20 +144,19 @@ class SQLiteArchive():
 
         with self._conn as c:
             if members:
-                rows = c.execute(
+                cur = c.execute(
                     f"""
                     SELECT * FROM sqlar WHERE name IN ({'?,'.join('' for _ in members)});
                     """,
                     members
                 )
             else:
-                rows = c.execute(
+                cur = c.execute(
                     """
                     SELECT * FROM sqlar;
                     """
-                ).fetchall()
-
-        for row in rows:
+                )
+            for row in cur:
             _decompress_row(path, row)
 
     @_ensure_conn
@@ -161,20 +169,39 @@ class SQLiteArchive():
                 member
             ).fetchone()
         
-        return _decompress_data(row[4], row[3])
+        _, _, _, size, data = row
+        return decompress_data(data. size)
 
     @_ensure_conn
     def testsqlar(self):
         raise NotImplementedError()
 
     @_ensure_conn
-    def write(self, filename, arcname=None, compress_level=None):
+    def write(self, filename, arcname=None, compression=None, compress_level=None):
         arcname = arcname or filename
 
-        with open(filename, "rb") as f:
-            data = _compress_data(f.read(), compress_level or self._compress_level)
+        compression = compression or self._compression
+        level = compress_level or self._compress_level
 
-        info = os.stat(filename)
+        path = Path(filename)
+
+        info = path.stat()
+        mode = info.st_mode & 0o777
+        mtime = int(info.st_mtime_ns * 1e-9)
+        size = info.st_size
+
+        if path.is_symlink():
+            data = str(path.resolve().as_posix())
+            size = -1
+        elif path.is_file():
+            with open(path, "rb") as f:
+                if compression == SQLAR_DEFLATED:
+                    data = compress_data(f.read(), level)
+                else:
+                    data = f.read()
+        elif path.is_dir():
+            data = None
+            size = 0
 
         with self._conn as c:
             c.execute(
@@ -182,15 +209,18 @@ class SQLiteArchive():
                 INSERT INTO sqlar(name, mode, mtime, sz, data)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (str(Path(arcname).as_posix()), info.st_mode & 0o777, int(info.st_mtime_ns * 1e-9), info.st_size, data)
+                (str(Path(arcname).as_posix()), mode, mtime, size, data)
             )
 
     @_ensure_conn
-    def writestr(self, arcname, data, compress_level=None):
+    def writestr(self, arcname, data, unix_mode=0o777, mtime=int(datetime.utcnow().timestamp()), compression=None, compress_level=None):
         if isinstance(data, str):
             data = data.encode("utf-8")
         
-        compressed_data = _compress_data(data, compress_level or self._compress_level)
+        compress_type = compression or self._compression
+        level = compress_level or self._compress_level
+        
+        compressed_data = compress_data(data, level) if compress_type == SQLAR_DEFLATED else data
 
         with self._conn as c:
             c.execute(
@@ -198,7 +228,7 @@ class SQLiteArchive():
                 INSERT INTO sqlar(name, mode, mtime, sz, data)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (str(Path(arcname).as_posix()), 0o777, int(datetime.utcnow().timestamp()), len(data), compressed_data)
+                (str(Path(arcname).as_posix()), unix_mode, mtime, len(data), compressed_data)
             )
 
     def __enter__(self):
