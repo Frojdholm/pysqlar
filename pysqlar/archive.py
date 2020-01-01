@@ -50,7 +50,7 @@ def compress_data(data, level=None):
     Args:
         data: The data to compress.
         level (optional): The level of compression, see the *zlib* documentation
-            for allowed values. If it is ``None``, ``zlib.Z_DEFALUT_COMPRESSION``
+            for allowed values. If it is `None`, `zlib.Z_DEFALUT_COMPRESSION`
             is used.
 
     Returns:
@@ -64,7 +64,7 @@ def compress_data(data, level=None):
 
 
 def decompress_data(data, size):
-    """Decompress data compressed with ``pysqlar.compress_data``.
+    """Decompress data compressed with `pysqlar.compress_data`.
 
     If the size of the data is the same as *size* the data is assumed to be
     uncompressed and is returned directly.
@@ -127,19 +127,20 @@ def is_sqlar(filename):
 
     Checks whether the table *sqlar* with the following schema exists in the
     database:
-    .. code-block:: sql
-        CREATE TABLE sqlar(
-                        name TEXT PRIMARY KEY,
-                        mode INT,
-                        mtime INT,
-                        sz INT,
-                        data BLOB
-                    )
+    ```sql
+    CREATE TABLE sqlar(
+                    name TEXT PRIMARY KEY,
+                    mode INT,
+                    mtime INT,
+                    sz INT,
+                    data BLOB
+                )
+    ```
 
     Args:
         filename: Filename or path-like object to the file to check.
     Returns:
-        ``True`` if *filename* is a SQLite Archive, ``False``
+        `True` if *filename* is a SQLite Archive, `False`
         otherwise.
     """
     if not os.path.exists(filename):
@@ -177,25 +178,26 @@ class SQLiteArchive():
     compression.
 
     The archive table *sqlar* has the following schema:
-    .. code-block:: sql
-        CREATE TABLE sqlar(
-                        name TEXT PRIMARY KEY,
-                        mode INT,
-                        mtime INT,
-                        sz INT,
-                        data BLOB
-                    )
+    ```sql
+    CREATE TABLE sqlar(
+                    name TEXT PRIMARY KEY,
+                    mode INT,
+                    mtime INT,
+                    sz INT,
+                    data BLOB
+                )
+    ```
 
     Files are stored as binary blobs. Both directories and empty files has a
-    size (``sz``) field set to 0 in the database, but directories also have
-    ``data = NULL``. Symbolic links get their size set to -1 and ``data`` to
+    size (`sz`) field set to 0 in the database, but directories also have
+    `data = NULL`. Symbolic links get their size set to -1 and `data` to
     their original targets.
 
     Additional tables can be stored in the database to store additional metadata
     for the files.
 
     Args:
-    filename: The path to the archive. The special name ``:memory:``
+    filename: The path to the archive. The special name `:memory:`
         opens a memory-only database, in this case the *mode* parameter is
         ignored.
     mode (optional): The SQLite *mode* to open the archive with. Allowed values
@@ -209,14 +211,14 @@ class SQLiteArchive():
         "memory"
             Open a memory-only database.
         
-        See `SQLite URI documentation <https://www.sqlite.org/uri.html>`_ for more information
+        See [SQLite URI documentation](https://www.sqlite.org/uri.html) for more information
     compression (optional): Controls the compression of the archive. Allowed
-        values are ``pysqlar.SQLAR_STORED`` which stores the data uncompressed
-        in the archive and ``pysqlar.SQLAR_DEFLATED`` which stores data in zlib
+        values are `pysqlar.SQLAR_STORED` which stores the data uncompressed
+        in the archive and `pysqlar.SQLAR_DEFLATED` which stores data in zlib
         deflated compressed format.
     compress_level (optional): The compression level to use, see *zlib*
         documentation for allowed values. If compression is
-        ``pysqlar.SQLAR_DEFLATED`` the default is ``zlib.Z_DEFAULT_COMPRESSION``.
+        `pysqlar.SQLAR_DEFLATED` the default is `zlib.Z_DEFAULT_COMPRESSION`.
 
     Attributes:
         filename: The filename of the SQLite Archive.
@@ -240,7 +242,7 @@ class SQLiteArchive():
             name: Name of the file in the archive.
 
         Returns:
-            Metadata for file *name* or ``None`` if there is no such file in the
+            Metadata for file *name* or `None` if there is no such file in the
             archive.
         """
         with self._conn as c:
@@ -307,7 +309,7 @@ class SQLiteArchive():
                 shorter than 999 members.
 
         Raises:
-            ValueError: If ``len(members) > 1000``.
+            ValueError: If `len(members) > 1000`.
         """
         if members and len(members) > 1000:
             raise ValueError("can only extract 999 or less named members.")
@@ -373,9 +375,9 @@ class SQLiteArchive():
         Writes the file into the archive with the archive name *arcname*, which
         by default is the same as filename.
 
-        Both directories and empty files has a size (``sz``) field set to 0 in
-        the database, but directories also have ``data = NULL``. Symbolic links
-        get their size set to -1 and ``data`` to their original targets.
+        Both directories and empty files has a size (`sz`) field set to 0 in
+        the database, but directories also have `data = NULL`. Symbolic links
+        get their size set to -1 and `data` to their original targets.
 
         Args:
             filename: Filename or path-like object to the file to be written
