@@ -93,19 +93,20 @@ def is_sqlar(filename):
         return False
     flag = False
     try:
-        conn = _init_archive(filename, mode="ro")
+        conn, _ = _init_archive(filename, mode="ro")
         cur = conn.cursor()
-        sql = cur.execute(
+        row = cur.execute(
             """
             SELECT sql FROM sqlite_master
             WHERE tbl_name = 'sqlar' AND type = 'table';
             """
         ).fetchone()
-
-        # Normalize whitespace
-        sql = " ".join(sql.split())
-        if sql == SQLAR_TABLE_SCHEMA:
-            flag = True
+        if row:
+            sql = row[0]
+            # Normalize whitespace
+            sql = " ".join(sql.split())
+            if sql == SQLAR_TABLE_SCHEMA:
+                flag = True
     except sqlite3.OperationalError:
         # if we have an error the file is not an SQLite Archive
         flag = False
