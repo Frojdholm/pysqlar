@@ -157,7 +157,7 @@ class SQLiteArchive():
                     """
                 )
             for row in cur:
-            _decompress_row(path, row)
+                _decompress_row(path, row)
 
     @_ensure_conn
     def read(self, name):
@@ -168,9 +168,15 @@ class SQLiteArchive():
                 """,
                 member
             ).fetchone()
-        
+
         _, _, _, size, data = row
         return decompress_data(data. size)
+
+    @_ensure_conn
+    def sql(self, query, *args):
+        with self._conn as c:
+            rows = c.execute(query, args).fetchall()
+        return rows
 
     @_ensure_conn
     def testsqlar(self):
