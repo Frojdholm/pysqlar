@@ -56,12 +56,12 @@ def _init_archive(filename, mode):
         conn = sqlite3.connect(filename)
         mode = "rwc"
     else:
-        if self.mode == "memory":
+        if mode == "memory":
             uri = f"file:{filename}"
         else:
             uri = Path(filename).absolute().as_uri()
-        query = f"mode={mode}"
-        conn = sqlite3.connect(f"{uri}?{query}", uri=True)
+
+        conn = sqlite3.connect(f"{uri}?mode={mode}", uri=True)
 
     if "w" in mode or mode == "memory":
         with conn as c:
