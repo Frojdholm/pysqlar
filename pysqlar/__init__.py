@@ -1,4 +1,3 @@
-import functools
 import os
 import sqlite3
 import sys
@@ -52,23 +51,19 @@ def _decompress_row(path, row):
     os.utime(complete_path, times=(info.st_atime, mtime))
 
 
-class SQLiteArchive():
-    def __init__(self, filename, create=False, compression=SQLAR_STORED, compress_level=None):
-        self.filename = filename
-        self._conn = self._init_archive() if create else None
-        self._compression = compression
-        self._compress_level = compress_level
-    
-    def _ensure_conn(func):
-        @functools.wraps(func)
-        def wrapper(self, *args, **kwargs):
-            if not self._conn:
-                self._conn = self._init_archive()
-            return func(self, *args, **kwargs)
-        return wrapper
-    
-    def _init_archive(self):
-        conn = self._conn or sqlite3.connect(self.filename)
+def _init_archive(filename, mode):
+    if filename == ":memory:":
+        conn = sqlite3.connect(filename)
+        mode = "rwc"
+    else:
+        if self.mode == "memory":
+            uri = f"file:{filename}"
+        else:
+            uri = Path(filename).absolute().as_uri()
+        query = f"mode={mode}"
+        conn = sqlite3.connect(f"{uri}?{query}", uri=True)
+
+    if "w" in mode or mode == "memory":
         with conn as c:
             c.execute(
                 """
@@ -81,13 +76,19 @@ class SQLiteArchive():
                 );
                 """
             )
-        return conn
+    return conn, mode
+
+
+class SQLiteArchive():
+    def __init__(self, filename, mode="ro", compression=SQLAR_STORED, compress_level=None):
+        self.filename = filename
+        self._conn, self.mode = _init_archive(filename, mode)
+        self._compression = compression
+        self._compress_level = compress_level
 
     def close(self):
-        if self._conn:
-            self._conn.close()
+        self._conn.close()
     
-    @_ensure_conn
     def getinfo(self, name):
         with self._conn as c:
             row = c.execute(
@@ -98,7 +99,6 @@ class SQLiteArchive():
             ).fetchone()
         return row
 
-    @_ensure_conn
     def infolist(self):
         with self._conn as c:
             rows = c.execute(
@@ -108,7 +108,6 @@ class SQLiteArchive():
             ).fetchall()
         return rows
 
-    @_ensure_conn
     def namelist(self):
         with self._conn as c:
             rows = c.execute(
@@ -118,11 +117,9 @@ class SQLiteArchive():
             ).fetchall()
         return rows
 
-    @_ensure_conn
     def open(self, name, mode="r"):
         raise NotImplementedError()
 
-    @_ensure_conn
     def extract(self, member, path=None):
         path = Path(path) if path else Path()
 
@@ -136,7 +133,6 @@ class SQLiteArchive():
         if row:
             _decompress_row(path, row)
 
-    @_ensure_conn
     def extractall(self, path=None, members=None):
         if members and len(members) > 1000:
             raise ValueError("can only extract 999 or less named members.")
@@ -159,7 +155,6 @@ class SQLiteArchive():
             for row in cur:
                 _decompress_row(path, row)
 
-    @_ensure_conn
     def read(self, name):
         with self._conn as c:
             row = c.execute(
@@ -172,17 +167,14 @@ class SQLiteArchive():
         _, _, _, size, data = row
         return decompress_data(data. size)
 
-    @_ensure_conn
     def sql(self, query, *args):
         with self._conn as c:
             rows = c.execute(query, args).fetchall()
         return rows
 
-    @_ensure_conn
     def testsqlar(self):
         raise NotImplementedError()
 
-    @_ensure_conn
     def write(self, filename, arcname=None, compression=None, compress_level=None):
         arcname = arcname or filename
 
@@ -218,7 +210,6 @@ class SQLiteArchive():
                 (str(Path(arcname).as_posix()), mode, mtime, size, data)
             )
 
-    @_ensure_conn
     def writestr(self, arcname, data, unix_mode=0o777, mtime=int(datetime.utcnow().timestamp()), compression=None, compress_level=None):
         if isinstance(data, str):
             data = data.encode("utf-8")
