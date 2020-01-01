@@ -14,7 +14,10 @@ class Compression(Enum):
 
 
 SQLAR_STORED = Compression.SQLAR_STORED
+"""Alias for pysqlar.Compression.SQLAR_STORED."""
+
 SQLAR_DEFLATED = Compression.SQLAR_DEFLATED
+"""Alias for pysqlar.Compression.SQLAR_DEFLATED."""
 
 SQLAR_TABLE_SCHEMA = " ".join("""
 CREATE TABLE sqlar(
@@ -24,6 +27,7 @@ CREATE TABLE sqlar(
     sz INT,
     data BLOB
 )""".split()) # Normalize whitespace in the statement
+"""The table definition for the SQLite Archive table."""
 
 
 def _get_deflated_decompressor():
@@ -35,13 +39,42 @@ def _get_deflated_compressor(level=-1):
 
 
 def compress_data(data, level=None):
-    level = level if level else -1
+    """Compress data for storage in archive.
+
+    The behaviour is the same as *sqlar_compress*. The data is compressed using
+    the zlib compress convenience function, adding the file header and CRC
+    footer. If the compressed data is smaller than the original it is returned
+    otherwise the original data is returned.
+
+    Args:
+        data: The data to compress.
+        level (optional): The level of compression, see the *zlib* documentation
+            for allowed values. If it is ``None``, ``zlib.Z_DEFALUT_COMPRESSION``
+            is used.
+
+    Returns:
+        The compressed data if it is smaller than the original, otherwise the
+        original data.
+    """
+    level = level if level else zlib.Z_DEFAULT_COMPRESSION
 
     compressed_data = zlib.compress(data, level=level)
     return compressed_data if len(compressed_data) < len(data) else data
 
 
 def decompress_data(data, size):
+    """Decompress data compressed with ``pysqlar.compress_data``.
+
+    If the size of the data is the same as *size* the data is assumed to be
+    uncompressed and is returned directly.
+
+    Args:
+        data: The data to be decompressed.
+        size: The original size of the data.
+    
+    Returns:
+        The decompressed data.
+    """
     if size == len(data):
         return data
     else:
@@ -89,6 +122,23 @@ def _init_archive(filename, mode):
 
 
 def is_sqlar(filename):
+    """Checks if *filename* is a SQLite Archive.
+
+    Checks whether the table *sqlar* with the following schema exists in the
+    database:
+    .. code-block:: sql
+        CREATE TABLE sqlar(
+                        name TEXT PRIMARY KEY,
+                        mode INT,
+                        mtime INT,
+                        sz INT,
+                        data BLOB
+                    )
+
+    Returns:
+        ``True`` if *filename* is a SQLite Archive, ``False``
+        otherwise.
+    """
     if not os.path.exists(filename):
         return False
     flag = False
@@ -108,7 +158,7 @@ def is_sqlar(filename):
             if sql == SQLAR_TABLE_SCHEMA:
                 flag = True
     except sqlite3.OperationalError:
-        # if we have an error the file is not an SQLite Archive
+        # if we there is an error the file is not a SQLite Archive
         flag = False
     finally:
         conn.close()
@@ -117,6 +167,58 @@ def is_sqlar(filename):
 
 
 class SQLiteArchive():
+    """Open a SQLite Archive.
+
+    SQLite Archives is an archiving format that utilises an SQLite database to
+    store data. Data is optionally compressed using the zlib deflated
+    compression.
+
+    The archive table *sqlar* has the following schema:
+    .. code-block:: sql
+        CREATE TABLE sqlar(
+                        name TEXT PRIMARY KEY,
+                        mode INT,
+                        mtime INT,
+                        sz INT,
+                        data BLOB
+                    )
+
+    Files are stored as binary blobs. Both directories and empty files has a
+    size (``sz``) field set to 0 in the database, but directories also have
+    ``data = NULL``. Symbolic links get their size set to -1 and ``data`` to
+    their original targets.
+
+    Additional tables can be stored in the database to store additional metadata
+    for the files.
+
+    Args:
+    filename: The path to the archive. The special name ``:memory:``
+        opens a memory-only database, in this case the *mode* parameter is
+        ignored.
+    mode (optional): The SQLite *mode* to open the archive with. Allowed values
+        are:
+        "ro"
+            Read-Only
+        "rw"
+            Read-Write
+        "rwc"
+            Read-Write-Create
+        "memory"
+            Open a memory-only database. See SQLite URI documentation for more
+            information
+    compression (optional): Controls the compression of the archive. Allowed
+        values are ``pysqlar.SQLAR_STORED`` which stores the data uncompressed
+        in the archive and ``pysqlar.SQLAR_DEFLATED`` which stores data in zlib
+        deflated compressed format.
+    compress_level (optional): The compression level to use, see *zlib*
+        documentation for allowed values. If compression is
+        ``pysqlar.SQLAR_DEFLATED`` the default is ``zlib.Z_DEFAULT_COMPRESSION``.
+
+    Attributes:
+        filename: The filename of the SQLite Archive.
+        mode: The current mode of the opened database.
+    """
+
     def __init__(self, filename, mode="ro", compression=SQLAR_STORED, compress_level=None):
         self.filename = filename
         self._conn, self.mode = _init_archive(filename, mode)
@@ -124,19 +226,30 @@ class SQLiteArchive():
         self._compress_level = compress_level
 
     def close(self):
+        """Close the database."""
         self._conn.close()
     
     def getinfo(self, name):
+        """Return metadata about a file in the archive.
+
+        Args:
+            name: Name of the file in the archive.
+
+        Returns:
+            Metadata for file *name* or ``None`` if there is no such file in the
+            archive.
+        """
         with self._conn as c:
             row = c.execute(
                 """
-                SELECT * FROM sqlar WHERE name = ?;
+                SELECT name, mode, mtime, sz FROM sqlar WHERE name = ?;
                 """,
                 name
             ).fetchone()
         return row
 
     def infolist(self):
+        """Returns a list of metadata for all files in the archive."""
         with self._conn as c:
             rows = c.execute(
                 """
@@ -146,6 +259,7 @@ class SQLiteArchive():
         return rows
 
     def namelist(self):
+        """Returns a list of all files in the archive."""
         with self._conn as c:
             rows = c.execute(
                 """
@@ -158,6 +272,14 @@ class SQLiteArchive():
         raise NotImplementedError()
 
     def extract(self, member, path=None):
+        """Extract a single member of the archive.
+
+        Defaults to extracting in *cwd*.
+
+        Args:
+            member: The archive member to extract.
+            path (optional): The root path to extract the archive to.
+        """
         path = Path(path) if path else Path()
 
         with self._conn as c:
@@ -171,6 +293,18 @@ class SQLiteArchive():
             _decompress_row(path, row)
 
     def extractall(self, path=None, members=None):
+        """Extract the entire archive.
+
+        Defaults to extracting in *cwd*.
+
+        Args:
+            path (optional): The root path to extract the archive to.
+            members (optional): A list of member files to extract. Has to be
+                shorter than 999 members.
+
+        Raises:
+            ValueError: If ``len(members) > 1000``.
+        """
         if members and len(members) > 1000:
             raise ValueError("can only extract 999 or less named members.")
         path = Path(path) if path else Path()
@@ -193,6 +327,14 @@ class SQLiteArchive():
                 _decompress_row(path, row)
 
     def read(self, name):
+        """Returns a decompressed bytes-object from the archive.
+
+        Args:
+            name: The name of the file to extract.
+
+        Returns:
+            A bytes-object with the decompressed file.
+        """
         with self._conn as c:
             row = c.execute(
                 """
@@ -200,11 +342,20 @@ class SQLiteArchive():
                 """,
                 member
             ).fetchone()
-
-        _, _, _, size, data = row
-        return decompress_data(data. size)
+        if row:
+            _, _, _, size, data = row
+            return decompress_data(data. size)
 
     def sql(self, query, *args):
+        """Execute raw SQL statements against the database.
+
+        Args:
+            query: The SQL statement.
+            *args: Arguments that are substituted into query.
+
+        Returns:
+            The results of the query.
+        """
         with self._conn as c:
             rows = c.execute(query, args).fetchall()
         return rows
@@ -213,6 +364,24 @@ class SQLiteArchive():
         raise NotImplementedError()
 
     def write(self, filename, arcname=None, compression=None, compress_level=None):
+        """Write the file pointed to by *filename* to the archive.
+
+        Writes the file into the archive with the archive name *arcname*, which
+        by default is the same as filename.
+
+        Both directories and empty files has a size (``sz``) field set to 0 in
+        the database, but directories also have ``data = NULL``. Symbolic links
+        get their size set to -1 and ``data`` to their original targets.
+
+        Args:
+            filename: Filename or path-like object to the file to be written
+                into the archive.
+            arcname (optional): The name of the file in the archive.
+            compression (optional): Override the *compression* chosen when
+                opening the archive.
+            compress_level (optional): Override the *compress_level* chosen when
+                opening the archive.
+        """
         arcname = arcname or filename
 
         compression = compression or self._compression
@@ -248,6 +417,20 @@ class SQLiteArchive():
             )
 
     def writestr(self, arcname, data, unix_mode=0o777, mtime=int(datetime.utcnow().timestamp()), compression=None, compress_level=None):
+        """Write the string into the archive with name *arcname*.
+
+        If *data* is a *str* it is first encoded as utf-8 before writing.
+
+        Args:
+            arcname: The name of the file in the archive.
+            data: The *bytes* or *str* to write to the archive.
+            unix_mode (optional): The unix file permissions.
+            mtime (optional): The modification time in unix epoch time (seconds).
+            compression (optional): Override the *compression* chosen when
+                opening the archive.
+            compress_level (optional): Override the *compress_level* chosen when
+                opening the archive.
+        """
         if isinstance(data, str):
             data = data.encode("utf-8")
         
