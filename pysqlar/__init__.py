@@ -202,7 +202,7 @@ class SQLiteArchive():
             )
 
     def __enter__(self):
-        raise NotImplementedError()
+        return self
 
     def __exit__(self, *details):
-        raise NotImplementedError()
+        self.close()
