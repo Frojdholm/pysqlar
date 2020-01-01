@@ -136,6 +136,8 @@ def is_sqlar(filename):
                         data BLOB
                     )
 
+    Args:
+        filename: Filename or path-like object to the file to check.
     Returns:
         ``True`` if *filename* is a SQLite Archive, ``False``
         otherwise.
@@ -205,8 +207,9 @@ class SQLiteArchive():
         "rwc"
             Read-Write-Create
         "memory"
-            Open a memory-only database. See SQLite URI documentation for more
-            information
+            Open a memory-only database.
+        
+        See `SQLite URI documentation <https://www.sqlite.org/uri.html>`_ for more information
     compression (optional): Controls the compression of the archive. Allowed
         values are ``pysqlar.SQLAR_STORED`` which stores the data uncompressed
         in the archive and ``pysqlar.SQLAR_DEFLATED`` which stores data in zlib
