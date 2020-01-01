@@ -15,10 +15,10 @@ class Compression(Enum):
 
 
 SQLAR_STORED = Compression.SQLAR_STORED
-"""Alias for pysqlar.Compression.SQLAR_STORED."""
+"""Alias for `Compression.SQLAR_STORED`."""
 
 SQLAR_DEFLATED = Compression.SQLAR_DEFLATED
-"""Alias for pysqlar.Compression.SQLAR_DEFLATED."""
+"""Alias for `Compression.SQLAR_DEFLATED`."""
 
 SQLAR_TABLE_SCHEMA = " ".join("""
 CREATE TABLE sqlar(
@@ -42,10 +42,11 @@ def _get_deflated_compressor(level=-1):
 def compress_data(data, level=None):
     """Compress data for storage in archive.
 
-    The behaviour is the same as *sqlar_compress*. The data is compressed using
-    the zlib compress convenience function, adding the file header and CRC
-    footer. If the compressed data is smaller than the original it is returned
-    otherwise the original data is returned.
+    The behaviour is the same as
+    [*sqlar_compress*](https://sqlite.org/sqlar/doc/trunk/README.md). The data
+    is compressed using the zlib compress convenience function, adding the file
+    header and CRC footer. If the compressed data is smaller than the original
+    it is returned otherwise the original data is returned.
 
     Args:
         data: The data to compress.
@@ -64,7 +65,7 @@ def compress_data(data, level=None):
 
 
 def decompress_data(data, size):
-    """Decompress data compressed with `pysqlar.compress_data`.
+    """Decompress data compressed with `compress_data`.
 
     If the size of the data is the same as *size* the data is assumed to be
     uncompressed and is returned directly.
@@ -72,7 +73,7 @@ def decompress_data(data, size):
     Args:
         data: The data to be decompressed.
         size: The original size of the data.
-    
+
     Returns:
         The decompressed data.
     """
@@ -171,9 +172,9 @@ def is_sqlar(filename):
 
 
 class SQLiteArchive():
-    """Open a SQLite Archive.
+    """An SQLite Archive.
 
-    SQLite Archives is an archiving format that utilises an SQLite database to
+    SQLite Archive is an archiving format that utilises an SQLite database to
     store data. Data is optionally compressed using the zlib deflated
     compression.
 
@@ -196,36 +197,36 @@ class SQLiteArchive():
     Additional tables can be stored in the database to store additional metadata
     for the files.
 
-    Args:
-    filename: The path to the archive. The special name `:memory:`
-        opens a memory-only database, in this case the *mode* parameter is
-        ignored.
-    mode (optional): The SQLite *mode* to open the archive with. Allowed values
-        are:
-        "ro"
-            Read-Only
-        "rw"
-            Read-Write
-        "rwc"
-            Read-Write-Create
-        "memory"
-            Open a memory-only database.
-        
-        See [SQLite URI documentation](https://www.sqlite.org/uri.html) for more information
-    compression (optional): Controls the compression of the archive. Allowed
-        values are `pysqlar.SQLAR_STORED` which stores the data uncompressed
-        in the archive and `pysqlar.SQLAR_DEFLATED` which stores data in zlib
-        deflated compressed format.
-    compress_level (optional): The compression level to use, see *zlib*
-        documentation for allowed values. If compression is
-        `pysqlar.SQLAR_DEFLATED` the default is `zlib.Z_DEFAULT_COMPRESSION`.
-
     Attributes:
         filename: The filename of the SQLite Archive.
         mode: The current mode of the opened database.
     """
 
-    def __init__(self, filename, mode="ro", compression=SQLAR_STORED, compress_level=None):
+    def __init__(self,
+                 filename,
+                 mode="ro",
+                 compression=SQLAR_STORED,
+                 compress_level=None):
+        """Open a SQLite Archive.
+
+        Args:
+            filename: The path to the archive. The special name `:memory:`
+                opens a memory-only database, in this case the *mode* parameter
+                is ignored.
+            mode (optional): The SQLite *mode* to open the archive with. Allowed
+                values are: `"ro"` Read-Only, `"rw"` Read-Write, `"rwc"`
+                Read-Write-Create and `"memory"` opens a memory-only database.
+                See [SQLite URI documentation](https://www.sqlite.org/uri.html)
+                for more information
+            compression (optional): Controls the compression of the archive.
+                Allowed values are `SQLAR_STORED` which stores the data
+                uncompressed in the archive and `SQLAR_DEFLATED` which stores
+                data in zlib deflated compressed format.
+            compress_level (optional): The compression level to use, see *zlib*
+                documentation for allowed values. If compression is
+                `SQLAR_DEFLATED` the default is
+                `zlib.Z_DEFAULT_COMPRESSION`.
+        """
         self.filename = filename
         self._conn, self.mode = _init_archive(filename, mode)
         self._compression = compression
@@ -422,7 +423,13 @@ class SQLiteArchive():
                 (str(Path(arcname).as_posix()), mode, mtime, size, data)
             )
 
-    def writestr(self, arcname, data, unix_mode=0o777, mtime=int(datetime.utcnow().timestamp()), compression=None, compress_level=None):
+    def writestr(self,
+                 arcname,
+                 data,
+                 unix_mode=0o777,
+                 mtime=int(datetime.utcnow().timestamp()),
+                 compression=None,
+                 compress_level=None):
         """Write the string into the archive with name *arcname*.
 
         If *data* is a *str* it is first encoded as utf-8 before writing.
@@ -443,7 +450,10 @@ class SQLiteArchive():
         compress_type = compression or self._compression
         level = compress_level or self._compress_level
         
-        compressed_data = compress_data(data, level) if compress_type == SQLAR_DEFLATED else data
+        if compress_type == SQLAR_DEFLATED:
+            compressed_data = compress_data(data, level)
+        else:
+            compressed_data = data
 
         with self._conn as c:
             c.execute(
@@ -451,7 +461,13 @@ class SQLiteArchive():
                 INSERT INTO sqlar(name, mode, mtime, sz, data)
                 VALUES (?, ?, ?, ?, ?)
                 """,
-                (str(Path(arcname).as_posix()), unix_mode, mtime, len(data), compressed_data)
+                (
+                    str(Path(arcname).as_posix()),
+                    unix_mode,
+                    mtime,
+                    len(data),
+                    compressed_data
+                )
             )
 
     def __enter__(self):
