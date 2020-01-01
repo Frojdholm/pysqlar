@@ -16,6 +16,15 @@ class Compression(Enum):
 SQLAR_STORED = Compression.SQLAR_STORED
 SQLAR_DEFLATED = Compression.SQLAR_DEFLATED
 
+SQLAR_TABLE_SCHEMA = " ".join("""
+CREATE TABLE sqlar(
+    name TEXT PRIMARY KEY,
+    mode INT,
+    mtime INT,
+    sz INT,
+    data BLOB
+)""".split()) # Normalize whitespace in the statement
+
 
 def _get_deflated_decompressor():
     return zlib.decompressobj(wbits=-zlib.MAX_WBITS)
@@ -77,6 +86,33 @@ def _init_archive(filename, mode):
                 """
             )
     return conn, mode
+
+
+def is_sqlar(filename):
+    if not os.path.exists(filename):
+        return False
+    flag = False
+    try:
+        conn = _init_archive(filename, mode="ro")
+        cur = conn.cursor()
+        sql = cur.execute(
+            """
+            SELECT sql FROM sqlite_master
+            WHERE tbl_name = 'sqlar' AND type = 'table';
+            """
+        ).fetchone()
+
+        # Normalize whitespace
+        sql = " ".join(sql.split())
+        if sql == SQLAR_TABLE_SCHEMA:
+            flag = True
+    except sqlite3.OperationalError:
+        # if we have an error the file is not an SQLite Archive
+        flag = False
+    finally:
+        conn.close()
+    return flag
+
 
 
 class SQLiteArchive():
