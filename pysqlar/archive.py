@@ -1,3 +1,4 @@
+import logging
 import os
 import sqlite3
 import sys
@@ -6,6 +7,9 @@ import zlib
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
+
+
+logger = logging.getLogger(__name__)
 
 
 class Compression(Enum):
@@ -87,7 +91,7 @@ def _decompress_row(path, row):
     complete_path = path / name
     complete_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with complete_path.open("wb") as f:
+    with open(complete_path, "wb") as f:
         f.write(decompress_data(data, size))
     
     complete_path.chmod(mode)
@@ -144,8 +148,12 @@ def is_sqlar(filename):
         `True` if *filename* is a SQLite Archive, `False`
         otherwise.
     """
+    if filename == ":memory:":
+        return True
+
     if not os.path.exists(filename):
         return False
+
     flag = False
     try:
         conn, _ = _init_archive(filename, mode="ro")
@@ -160,6 +168,7 @@ def is_sqlar(filename):
             sql = row[0]
             # Normalize whitespace
             sql = " ".join(sql.split())
+            logger.debug(sql)
             if sql == SQLAR_TABLE_SCHEMA:
                 flag = True
     except sqlite3.OperationalError:
@@ -251,7 +260,7 @@ class SQLiteArchive():
                 """
                 SELECT name, mode, mtime, sz FROM sqlar WHERE name = ?;
                 """,
-                name
+                (name,)
             ).fetchone()
         return row
 
@@ -273,7 +282,7 @@ class SQLiteArchive():
                 SELECT name FROM sqlar;
                 """
             ).fetchall()
-        return rows
+        return list(*zip(*rows)) # unpack [(item1,), (item2,), ...] to [item1, item2, ...]
 
     def open(self, name, mode="r"):
         raise NotImplementedError()
@@ -294,7 +303,7 @@ class SQLiteArchive():
                 """
                 SELECT * FROM sqlar WHERE name = ?;
                 """,
-                member
+                (member,)
             ).fetchone()
         if row:
             _decompress_row(path, row)
@@ -347,11 +356,11 @@ class SQLiteArchive():
                 """
                 SELECT * FROM sqlar WHERE name = ?;
                 """,
-                member
+                (name,)
             ).fetchone()
         if row:
             _, _, _, size, data = row
-            return decompress_data(data. size)
+            return decompress_data(data, size)
 
     def sql(self, query, *args):
         """Execute raw SQL statements against the database.
@@ -388,6 +397,10 @@ class SQLiteArchive():
                 opening the archive.
             compress_level (optional): Override the *compress_level* chosen when
                 opening the archive.
+
+        Raises:
+            ValueError: *filename* does not represent a file, directory or
+                symlink.
         """
         arcname = arcname or filename
 
@@ -413,7 +426,12 @@ class SQLiteArchive():
         elif path.is_dir():
             data = None
             size = 0
+        else:
+            raise ValueError("path is not a file, directory or symlink")
 
+        logger.debug(
+            f"Write: arcname={arcname}, mode={mode}, mtime={mtime}, size={size}"
+        )
         with self._conn as c:
             c.execute(
                 """
