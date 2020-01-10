@@ -105,11 +105,11 @@ def _init_archive(filename, mode):
         mode = "rwc"
     else:
         if mode == "memory":
-            uri = f"file:{filename}"
+            uri = "file:{}".format(filename)
         else:
             uri = Path(filename).absolute().as_uri()
 
-        conn = sqlite3.connect(f"{uri}?mode={mode}", uri=True)
+        conn = sqlite3.connect("{}?mode={}".format(uri, mode), uri=True)
 
     if "w" in mode or mode == "memory":
         with conn as c:
@@ -328,9 +328,9 @@ class SQLiteArchive():
         with self._conn as c:
             if members:
                 cur = c.execute(
-                    f"""
-                    SELECT * FROM sqlar WHERE name IN ({'?,'.join('' for _ in members)});
-                    """,
+                    """
+                    SELECT * FROM sqlar WHERE name IN ({});
+                    """.format('?,'.join('' for _ in members)),
                     members
                 )
             else:
@@ -430,7 +430,12 @@ class SQLiteArchive():
             raise ValueError("path is not a file, directory or symlink")
 
         logger.debug(
-            f"Write: arcname={arcname}, mode={mode}, mtime={mtime}, size={size}"
+            "Write: arcname={}, mode={}, mtime={}, size={}".format(
+                arcname,
+                mode,
+                mtime,
+                size
+            )
         )
         with self._conn as c:
             c.execute(
