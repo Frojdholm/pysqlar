@@ -12,11 +12,18 @@ from pysqlar import archive
 
 class ArchiveTestCase(unittest.TestCase):
 
-    def test_memory_archive(self):
-        self.assertTrue(
+    def test_memory_archive_no_sqlar(self):
+        self.assertFalse(
             archive.is_sqlar(":memory:"),
-            "in-memory archive not created with sqlar table"
+            "in-memory archive created with sqlar table"
         )
+    
+    def test_memory_archive_sqlar(self):
+        with archive.SQLiteArchive(":memory:") as ar:
+            self.assertTrue(
+                archive._sqlar_table_exists(ar._conn),
+                "in-memory archive not created with sqlar table"
+            )
 
 
 SQLITE_ARCHIVE_RETURN = ('CREATE TABLE sqlar(\n                    name TEXT PRIMARY KEY,\n                    mode INT,\n                    mtime INT,\n                    sz INT,\n                    data BLOB\n                )',)
@@ -67,6 +74,20 @@ class ArchiveMockedSQLiteTestCase(unittest.TestCase):
             archive.is_sqlar("example.sqlar"),
             "wrong return when sqlite3.Cursor.execute raises"
         )
+    
+    def test_SQLiteArchive_incorrect_schema(self):
+        self.mocksql.connect().cursor().execute().fetchone.return_value = SQLITE_ARCHIVE_INCORRECT_RETURN
+        with self.assertRaises(archive.SQLiteArchiveException):
+            with archive.SQLiteArchive("example.sqlar") as ar:
+                pass
+
+    def test_SQLiteArchive_correct_schema(self):
+        self.mocksql.connect().cursor().execute().fetchone.return_value = SQLITE_ARCHIVE_RETURN
+        try:
+            with archive.SQLiteArchive("example.sqlar") as ar:
+                pass
+        except archive.SQLiteArchiveException:
+            self.fail("SQLiteArchive raised exception on correct sqlar schema")
 
 
 class SQLiteArchiveWithDataTestCase(unittest.TestCase):

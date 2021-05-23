@@ -35,6 +35,10 @@ CREATE TABLE sqlar(
 """The table definition for the SQLite Archive table."""
 
 
+class SQLiteArchiveException(Exception):
+    pass
+
+
 def _get_deflated_decompressor():
     return zlib.decompressobj(wbits=-zlib.MAX_WBITS)
 
@@ -127,6 +131,25 @@ def _init_archive(filename, mode):
     return conn, mode
 
 
+def _sqlar_table_exists(conn):
+    cur = conn.cursor()
+    row = cur.execute(
+        """
+        SELECT sql FROM sqlite_master
+        WHERE tbl_name = 'sqlar' AND type = 'table';
+        """
+    ).fetchone()
+    if row:
+        sql = row[0]
+        # Normalize whitespace
+        sql = " ".join(sql.split())
+        logger.debug(sql)
+        if sql == SQLAR_TABLE_SCHEMA:
+            return True
+
+    return False
+
+
 def is_sqlar(filename):
     """Checks if *filename* is a SQLite Archive.
 
@@ -148,29 +171,13 @@ def is_sqlar(filename):
         `True` if *filename* is a SQLite Archive, `False`
         otherwise.
     """
-    if filename == ":memory:":
-        return True
-
     if not os.path.exists(filename):
         return False
 
     flag = False
     try:
-        conn, _ = _init_archive(filename, mode="ro")
-        cur = conn.cursor()
-        row = cur.execute(
-            """
-            SELECT sql FROM sqlite_master
-            WHERE tbl_name = 'sqlar' AND type = 'table';
-            """
-        ).fetchone()
-        if row:
-            sql = row[0]
-            # Normalize whitespace
-            sql = " ".join(sql.split())
-            logger.debug(sql)
-            if sql == SQLAR_TABLE_SCHEMA:
-                flag = True
+        conn = sqlite3.connect(filename)
+        flag = _sqlar_table_exists(conn)
     except sqlite3.OperationalError:
         # if we there is an error the file is not a SQLite Archive
         flag = False
@@ -235,9 +242,14 @@ class SQLiteArchive():
                 documentation for allowed values. If compression is
                 `SQLAR_DEFLATED` the default is
                 `zlib.Z_DEFAULT_COMPRESSION`.
+        
+        Raises:
+            `SQLiteArchiveException` if the *filename* is not a SQLite Archive.
         """
         self.filename = filename
         self._conn, self.mode = _init_archive(filename, mode)
+        if not _sqlar_table_exists(self._conn):
+            raise SQLiteArchiveException("{} is not a sqlite archive".format(self.filename))
         self._compression = compression
         self._compress_level = compress_level
 
