@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='pysqlar',
-    version='0.1.1',
+    version='0.1.2',
     description='Pure Python library for working with SQLite Archives.',
     long_description="""# pysqlar
 
