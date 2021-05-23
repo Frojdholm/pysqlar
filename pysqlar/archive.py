@@ -179,7 +179,7 @@ def is_sqlar(filename):
         conn = sqlite3.connect(filename)
         flag = _sqlar_table_exists(conn)
     except sqlite3.OperationalError:
-        # if we there is an error the file is not a SQLite Archive
+        # if there was an error the file is not a SQLite Archive
         flag = False
     finally:
         conn.close()
@@ -379,7 +379,7 @@ class SQLiteArchive():
 
         Args:
             query: The SQL statement.
-            *args: Arguments that are substituted into query.
+            *args: Arguments that are substituted into the query.
 
         Returns:
             The results of the query.
