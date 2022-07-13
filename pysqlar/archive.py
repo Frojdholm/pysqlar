@@ -35,6 +35,17 @@ CREATE TABLE sqlar(
 """The table definition for the SQLite Archive table."""
 
 
+SQLAR_DRAFT_TABLE_SCHEMA = " ".join("""
+CREATE TABLE sqlar(
+    name TEXT PRIMARY KEY, -- name of the file
+    mode INT, -- access permissions
+    mtime INT, -- last modification time
+    sz INT, -- original file size
+    data BLOB -- compressed content
+)""".split()) # Normalize whitespace in the statement
+"""The draft table definition for the SQLite Archive table."""
+
+
 class SQLiteArchiveException(Exception):
     pass
 
@@ -144,7 +155,7 @@ def _sqlar_table_exists(conn):
         # Normalize whitespace
         sql = " ".join(sql.split())
         logger.debug(sql)
-        if sql == SQLAR_TABLE_SCHEMA:
+        if sql == SQLAR_TABLE_SCHEMA or sql == SQLAR_DRAFT_TABLE_SCHEMA:
             return True
 
     return False
