@@ -24,27 +24,22 @@ SQLAR_STORED = Compression.SQLAR_STORED
 SQLAR_DEFLATED = Compression.SQLAR_DEFLATED
 """Alias for `Compression.SQLAR_DEFLATED`."""
 
-SQLAR_TABLE_SCHEMA = " ".join("""
-CREATE TABLE sqlar(
-    name TEXT PRIMARY KEY,
-    mode INT,
-    mtime INT,
-    sz INT,
-    data BLOB
-)""".split()) # Normalize whitespace in the statement
-"""The table definition for the SQLite Archive table."""
-
-
-SQLAR_DRAFT_TABLE_SCHEMA = " ".join("""
-CREATE TABLE sqlar(
+_SQLAR_TABLE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS sqlar(
     name TEXT PRIMARY KEY, -- name of the file
     mode INT, -- access permissions
     mtime INT, -- last modification time
     sz INT, -- original file size
     data BLOB -- compressed content
-)""".split()) # Normalize whitespace in the statement
-"""The draft table definition for the SQLite Archive table."""
+)"""
 
+_SQLAR_TABLE_INFO_EXPECTED_RESULT = [
+    (0, "name", "TEXT", 0, None, 1),
+    (1, "mode", "INT", 0, None, 0),
+    (2, "mtime", "INT", 0, None, 0),
+    (3, "sz", "INT", 0, None, 0),
+    (4, "data", "BLOB", 0, None, 0)
+]
 
 class SQLiteArchiveException(Exception):
     pass
@@ -128,37 +123,22 @@ def _init_archive(filename, mode):
 
     if "w" in mode or mode == "memory":
         with conn as c:
-            c.execute(
-                """
-                CREATE TABLE IF NOT EXISTS sqlar(
-                    name TEXT PRIMARY KEY,
-                    mode INT,
-                    mtime INT,
-                    sz INT,
-                    data BLOB
-                );
-                """
-            )
+            c.execute(_SQLAR_TABLE_SCHEMA)
     return conn, mode
 
 
 def _sqlar_table_exists(conn):
     cur = conn.cursor()
-    row = cur.execute(
-        """
-        SELECT sql FROM sqlite_master
-        WHERE tbl_name = 'sqlar' AND type = 'table';
-        """
-    ).fetchone()
-    if row:
-        sql = row[0]
-        # Normalize whitespace
-        sql = " ".join(sql.split())
-        logger.debug(sql)
-        if sql == SQLAR_TABLE_SCHEMA or sql == SQLAR_DRAFT_TABLE_SCHEMA:
-            return True
+    row = cur.execute("PRAGMA table_info('sqlar')").fetchall()
 
-    return False
+    if len(row) != len(_SQLAR_TABLE_INFO_EXPECTED_RESULT):
+        return False
+
+    for res, expected in zip(row, _SQLAR_TABLE_INFO_EXPECTED_RESULT):
+        if res != expected:
+            return False
+
+    return True
 
 
 def is_sqlar(filename):

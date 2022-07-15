@@ -26,8 +26,74 @@ class ArchiveTestCase(unittest.TestCase):
             )
 
 
-SQLITE_ARCHIVE_RETURN = ('CREATE TABLE sqlar(\n                    name TEXT PRIMARY KEY,\n                    mode INT,\n                    mtime INT,\n                    sz INT,\n                    data BLOB\n                )',)
-SQLITE_ARCHIVE_INCORRECT_RETURN = ('CREATE TABLE sqlar(\n                    name TEXT PRIMARY KEY\n                )',)
+class MemoryDatabaseTestCase(unittest.TestCase):
+    def setUp(self):
+        self.conn = sqlite3.connect(":memory:")
+
+    def tearDown(self):
+        self.conn.close()
+
+    def test_schema_with_comments(self):
+        self.conn.execute("""
+            CREATE TABLE sqlar(
+                name TEXT PRIMARY KEY, -- name of the file
+                mode INT, -- access permissions
+                mtime INT, -- last modification time
+                sz INT, -- original file size
+                data BLOB -- compressed content
+            )""")
+
+        self.assertTrue(
+            archive._sqlar_table_exists(self.conn),
+            "in-memory archive with correct table rejected"
+        )
+
+    def test_schema_without_comments(self):
+        self.conn.execute("""
+            CREATE TABLE sqlar(
+                name TEXT PRIMARY KEY,
+                mode INT,
+                mtime INT,
+                sz INT,
+                data BLOB
+            )""")
+
+        self.assertTrue(
+            archive._sqlar_table_exists(self.conn),
+            "in-memory archive with correct table rejected"
+        )
+
+    def test_wrong_schema(self):
+        # Missing the mode column
+        self.conn.execute("""
+            CREATE TABLE sqlar(
+                name TEXT PRIMARY KEY,
+                mtime INT,
+                sz INT,
+                data BLOB
+            )""")
+
+        self.assertFalse(
+            archive._sqlar_table_exists(self.conn),
+            "in-memory archive with wrong table accepted"
+        )
+
+
+SQLAR_TABLE_INFO_RESULT = [
+    (0, "name", "TEXT", 0, None, 1),
+    (1, "mode", "INT", 0, None, 0),
+    (2, "mtime", "INT", 0, None, 0),
+    (3, "sz", "INT", 0, None, 0),
+    (4, "data", "BLOB", 0, None, 0)
+]
+SQLAR_TABLE_INFO_INCORRECT_RESULT = [
+    (0, "name", "TEXT", 0, None, 1),
+    (1, "mode", "INT", 0, None, 0),
+    (2, "mtime", "INT", 0, None, 0),
+    (3, "sz", "INT", 0, None, 0),
+    (4, "data", "BLOB", 0, None, 0),
+    (5, "wrong", "TEXT", 0, None, 0)
+]
 
 
 class ArchiveMockedSQLiteTestCase(unittest.TestCase):
@@ -45,21 +111,21 @@ class ArchiveMockedSQLiteTestCase(unittest.TestCase):
         self.addCleanup(sqlpatcher.stop)
     
     def test_is_sqlar_archive(self):
-        self.mocksql.connect().cursor().execute().fetchone.return_value = SQLITE_ARCHIVE_RETURN
+        self.mocksql.connect().cursor().execute().fetchall.return_value = SQLAR_TABLE_INFO_RESULT
         self.assertTrue(
             archive.is_sqlar("example.sqlar"),
             "archive with correct schema not identified"
         )
 
     def test_is_sqlar_archive_incorrect_schema(self):
-        self.mocksql.connect().cursor().execute().fetchone.return_value = SQLITE_ARCHIVE_INCORRECT_RETURN
+        self.mocksql.connect().cursor().execute().fetchall.return_value = SQLAR_TABLE_INFO_INCORRECT_RESULT
         self.assertFalse(
             archive.is_sqlar("example.sqlar"),
             "archive with incorrect schema not identified"
         )
     
-    def test_is_sqlar_none_return(self):
-        self.mocksql.connect().cursor().execute().fetchone.return_value = None
+    def test_is_sqlar_empty_return(self):
+        self.mocksql.connect().cursor().execute().fetchall.return_value = []
         self.assertFalse(
             archive.is_sqlar("example.sqlar"),
             "archive without sqlar table not identified"
@@ -67,7 +133,7 @@ class ArchiveMockedSQLiteTestCase(unittest.TestCase):
     
     def test_is_sqlar_sqlite_raise(self):
         # Set the return value so that test will fail if error is not dealt with
-        self.mocksql.connect().cursor().execute().fetchone.return_value = SQLITE_ARCHIVE_RETURN
+        self.mocksql.connect().cursor().execute().fetchall.return_value = SQLAR_TABLE_INFO_RESULT
         # Make sqlite3.Cursor.execute raise
         self.mocksql.connect().cursor().execute.side_effect = sqlite3.OperationalError
         self.assertFalse(
@@ -76,13 +142,13 @@ class ArchiveMockedSQLiteTestCase(unittest.TestCase):
         )
     
     def test_SQLiteArchive_incorrect_schema(self):
-        self.mocksql.connect().cursor().execute().fetchone.return_value = SQLITE_ARCHIVE_INCORRECT_RETURN
+        self.mocksql.connect().cursor().execute().fetchall.return_value = SQLAR_TABLE_INFO_INCORRECT_RESULT
         with self.assertRaises(archive.SQLiteArchiveException):
             with archive.SQLiteArchive("example.sqlar") as ar:
                 pass
 
     def test_SQLiteArchive_correct_schema(self):
-        self.mocksql.connect().cursor().execute().fetchone.return_value = SQLITE_ARCHIVE_RETURN
+        self.mocksql.connect().cursor().execute().fetchall.return_value = SQLAR_TABLE_INFO_RESULT
         try:
             with archive.SQLiteArchive("example.sqlar") as ar:
                 pass
