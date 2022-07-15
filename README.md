@@ -44,3 +44,10 @@ with SQLiteArchive("filename.sqlar", mode="rwc") as ar:
 ```
 
 Note that this will create a new archive if the file does not exist.
+
+# Changelog
+
+## 0.1.3
+
+- Fix a bug where comments in the SQL statement that created the `sqlar` table
+  would cause the file to not be identified as an archive.
